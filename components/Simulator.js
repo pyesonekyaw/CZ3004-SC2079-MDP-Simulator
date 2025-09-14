@@ -1,5 +1,5 @@
 import React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import QueryAPI from "./QueryAPI";
 
 const Direction = {
@@ -9,7 +9,7 @@ const Direction = {
   WEST: 6,
   SKIP: 8,
 };
-
+ 
 const ObDirection = {
   NORTH: 0,
   EAST: 2,
@@ -48,11 +48,75 @@ export default function Simulator() {
   const [obstacles, setObstacles] = useState([]);
   const [obXInput, setObXInput] = useState(0);
   const [obYInput, setObYInput] = useState(0);
-  const [directionInput, setDirectionInput] = useState(ObDirection.NORTH);
+  const [directionInput, setDirectionInput] = useState(0);
   const [isComputing, setIsComputing] = useState(false);
+
+
   const [path, setPath] = useState([]);
   const [commands, setCommands] = useState([]);
   const [page, setPage] = useState(0);
+
+
+  const visitedGrid = useMemo(() => {
+  const s = new Set();
+
+  // mark the robot's 3×3 footprint at a base (x,y), store in rendered grid coords
+  const markFootprint = (cx, cy) => {
+    const x = Math.round(cx), y = Math.round(cy);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const bx = x + dx, by = y + dy;
+        if (bx < 0 || bx >= 20 || by < 0 || by >= 20) continue;
+        const t = transformCoord(bx, by); // -> { x: rowIndex, y: colIndex }
+        s.add(`${t.x},${t.y}`);
+      }
+    }
+  };
+
+  if (!path || path.length === 0) return s;
+
+  // up to current step (use `path.length - 1` if you want the whole route always)
+  const end = Math.min(page, path.length - 1);
+
+  // always include the first snapshot
+  markFootprint(path[0].x, path[0].y);
+
+  for (let i = 0; i < end; i++) {
+    let x0 = Math.round(path[i].x);
+    let y0 = Math.round(path[i].y);
+    const x1 = Math.round(path[i + 1].x);
+    const y1 = Math.round(path[i + 1].y);
+
+    // Move in the axis that matches the robot's facing first (more realistic),
+    // then the other axis. This fills all intermediate cells so there are no gaps.
+    const preferXFirst =
+      path[i].d === Direction.EAST || path[i].d === Direction.WEST;
+
+    const stepTo = (tx, ty) => {
+      const sx = Math.sign(tx - x0);
+      const sy = Math.sign(ty - y0);
+      while (x0 !== tx) {
+        x0 += sx;
+        markFootprint(x0, y0);
+      }
+      while (y0 !== ty) {
+        y0 += sy;
+        markFootprint(x0, y0);
+      }
+    };
+
+    if (preferXFirst) {
+      stepTo(x1, y0); // along X
+      stepTo(x1, y1); // then along Y
+    } else {
+      stepTo(x0, y1); // along Y
+      stepTo(x1, y1); // then along X
+    }
+  }
+
+  return s;
+}, [path, page]);
+
 
   const generateNewID = () => {
     while (true) {
@@ -369,7 +433,8 @@ export default function Simulator() {
           pushCell("bg-yellow-400 border-white border");
         }
       } else {
-        pushCell("border-black border");
+        const wasVisited = visitedGrid.has(`${i},${j}`);
+        pushCell(classNames("border-black border", wasVisited && "bg-purple-200"));
       }
       }
 
