@@ -25,3 +25,10 @@ body {
     )
     rgb(var(--background-start-rgb));
 }
+
+.trail {
+    position: absolute;
+    border-top: 2px solid black;
+    z-index: 1;
+    text-align: center;
+}
